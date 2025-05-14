@@ -178,12 +178,21 @@ def generate_api_request(image, title, username):
 # 测试API调用
 def test_api_call(json_request):
     try:
-        if isinstance(json_request, str) and json_request.startswith("{"):
+        # 处理已经是字典的情况
+        if isinstance(json_request, dict):
+            data = json_request
+        # 如果是字符串，尝试解析JSON
+        elif isinstance(json_request, str):
+            # 移除开头的空格和换行符
+            json_request = json_request.strip()
             data = json.loads(json_request)
         else:
             return {"error": "请提供有效的JSON请求"}
-            
+        
+        # 调用API处理函数    
         return extract_features_api(data)
+    except json.JSONDecodeError as e:
+        return {"error": f"JSON解析错误: {str(e)}"}
     except Exception as e:
         return {"error": f"API测试失败: {str(e)}"}
 
@@ -245,12 +254,22 @@ with gr.Blocks(title="ChainGuard 图像特征提取服务") as demo:
         with gr.TabItem("API文档"):
             gr.Markdown("""
             # ChainGuard 图像特征提取API
+
+            ## 概述
             
+            ChainGuard API提供图像特征提取服务，可生成用于版权保护和图像识别的特征向量和唯一指纹。
+
             ## API端点
             
+            ### 特征提取
             ```
             POST /extract_features_ui
             Content-Type: application/json
+            ```
+            
+            ### 健康检查
+            ```
+            GET /health
             ```
             
             ## 请求格式
@@ -258,13 +277,14 @@ with gr.Blocks(title="ChainGuard 图像特征提取服务") as demo:
             ```json
             {
                 "image": "base64编码的图像数据",
-                "title": "作品标题",
-                "username": "用户名"
+                "title": "作品标题(可选，默认为'未命名')",
+                "username": "用户名(可选，默认为'匿名用户')"
             }
             ```
             
             ## 响应格式
             
+            ### 成功响应
             ```json
             {
                 "status": "success",
@@ -275,8 +295,35 @@ with gr.Blocks(title="ChainGuard 图像特征提取服务") as demo:
             }
             ```
             
-            ## 客户端示例代码 (JavaScript)
+            ### 错误响应
+            ```json
+            {
+                "status": "error",
+                "error": "错误描述"
+            }
+            ```
             
+            ## 常见错误
+            
+            | 错误信息 | 描述 |
+            |---------|------|
+            | "图像解码失败" | Base64图像数据无效或格式不支持 |
+            | "图像预处理失败" | 图像无法被正确处理 |
+            | "处理失败" | 服务器内部错误 |
+            
+            ## 健康检查响应
+            
+            ```json
+            {
+                "status": "ok",
+                "service": "ChainGuard",
+                "version": "1.0.0"
+            }
+            ```
+            
+            ## 客户端示例代码
+            
+            ### JavaScript
             ```javascript
             async function extractFeatures(imageFile, title, username) {
                 // 将图像转换为Base64
@@ -297,7 +344,7 @@ with gr.Blocks(title="ChainGuard 图像特征提取服务") as demo:
                 };
                 
                 // 发送API请求
-                const response = await fetch('https://您的部署地址', {
+                const response = await fetch('https://您的部署地址/extract_features_ui', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -308,8 +355,45 @@ with gr.Blocks(title="ChainGuard 图像特征提取服务") as demo:
                 return await response.json();
             }
             ```
-            """)
+            
+            ### Python
+            ```python
+            import requests
+            import base64
+            from PIL import Image
+            import io
 
+            def extract_features(image_path, title="未命名", username="匿名用户"):
+                # 读取并编码图像
+                with open(image_path, "rb") as image_file:
+                    image_bytes = image_file.read()
+                
+                image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+                
+                # 构造请求数据
+                request_data = {
+                    "image": image_b64,
+                    "title": title,
+                    "username": username
+                }
+                
+                # 发送API请求
+                response = requests.post(
+                    "https://您的部署地址/extract_features_ui",
+                    json=request_data
+                )
+                
+                return response.json()
+            ```
+            
+            ## 实现说明
+            
+            - 特征向量由ResNet50模型生成，维度为2048
+            - 版权指纹使用SHA-256算法基于特征向量、标题和用户名生成
+            - 支持常见图像格式：JPEG、PNG、BMP等
+            - 建议图像大小不低于224x224像素
+            - API请求大小限制为20MB
+            """)
 # 添加一个专门的RESTful API端点
 def create_restful_api():
     from pydantic import BaseModel
